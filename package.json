@@ -1,0 +1,43 @@
+{
+  "name": "aws-tree",
+  "version": "0.9.0",
+  "description": "Lists network resources attached to all VPCs within an account",
+  "main": "out/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexswilliams/aws-tree.git"
+  },
+  "keywords": [
+    "aws",
+    "tree",
+    "vpc",
+    "eni"
+  ],
+  "author": "Alex Williams",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/alexswilliams/aws-tree/issues"
+  },
+  "homepage": "https://github.com/alexswilliams/aws-tree#readme",
+  "dependencies": {
+    "aws-sdk": "2.942.0",
+    "colors": "1.4.0"
+  },
+  "devDependencies": {
+    "@tsconfig/node16": "1.0.1",
+    "@types/node": "16.3.0",
+    "@typescript-eslint/eslint-plugin": "4.28.2",
+    "@typescript-eslint/parser": "4.28.2",
+    "esbuild": "0.12.15",
+    "eslint": "7.30.0",
+    "eslint-config-prettier": "8.3.0",
+    "eslint-plugin-prettier": "3.4.0",
+    "npm-upgrade": "3.0.0",
+    "prettier": "2.3.2",
+    "ts-node": "10.0.0",
+    "typescript": "4.3.5"
+  }
+}

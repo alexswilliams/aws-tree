@@ -1,0 +1,14 @@
+*.js
+*.d.ts
+*.js.map
+node_modules
+
+# IDE
+.vscode
+.idea
+
+**/coverage
+
+tsconfig.tsbuildinfo
+
+.DS_Store

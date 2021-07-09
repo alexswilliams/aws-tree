@@ -1,0 +1,29 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  IMAGE_URI: alexswilliams/aws-tree
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build Docker image
+        run: docker build . --tag ${IMAGE_URI}:${GITHUB_SHA}
+
+      - name: Log in to dockerhub
+        run: docker login --username ${{ secrets.DOCKER_HUB_USERNAME }} --password ${{ secrets.DOCKER_HUB_TOKEN }} index.docker.io
+
+      - name: Push to dockerhub
+        run: docker push ${IMAGE_URI}:${GITHUB_SHA}
