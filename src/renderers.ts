@@ -18,6 +18,8 @@ import type { VpcPeeringModel } from './api-calls/vpc-peering'
 import { makeName } from './helper'
 import type { TgwAttachmentModel, TgwModel } from './api-calls/tgw'
 import type { LambdaModel } from './api-calls/lambda'
+import type { ApiGwVpcLinkModel } from './api-calls/api-gw'
+import type { KafkaClusterModel, KafkaNodeModel } from './api-calls/kafka'
 
 export function renderVpcs(vpcs: VpcModel[], all: AllResources): void {
   const indent = '│'.grey
@@ -70,6 +72,7 @@ function renderSubnets(indent: string, subnets: SubnetModel[], all: AllResources
     console.log(`${newIndent} ${net.id}${net.name ? ` (${net.name.green})` : ''}`)
     console.log(`${newIndent}   AZ: ${net.az.grey}`)
     console.log(`${newIndent}   CIDR: ${net.v4Cidr.cyan} (${net.availableIps} available IPs)`)
+    const enisInThisSubnet = all.enis.filter(it => it.subnetId == net.id).map(it => it.id)
 
     renderRouteTables(
       newIndent,
@@ -94,12 +97,27 @@ function renderSubnets(indent: string, subnets: SubnetModel[], all: AllResources
       all
     )
 
-    const enisInThisSubnet = all.enis.filter(it => it.subnetId == net.id).map(it => it.id)
     renderVpcEndpoints(
       newIndent,
       all.vpcEndpoints.filter(
         it => it.vpcId == net.vpcId && it.enis.length > 0 && it.enis.some(eni => enisInThisSubnet.includes(eni))
       ),
+      net.id,
+      all
+    )
+
+    renderApiGatewayVpcLinks(
+      newIndent,
+      all.apiGwVpcLinks.filter(
+        it => it.subnetIds.includes(net.id) && it.enis.some(eni => enisInThisSubnet.includes(eni))
+      ),
+      net.id,
+      all
+    )
+
+    renderLambdas(
+      newIndent,
+      all.lambdas.filter(it => it.subnetIds.includes(net.id)),
       net.id,
       all
     )
@@ -128,18 +146,15 @@ function renderSubnets(indent: string, subnets: SubnetModel[], all: AllResources
     renderRdsInstances(
       newIndent,
       all.rds.filter(
-        it =>
-          it.subnets.includes(net.id) &&
-          all.enis.filter(eni => it.enis.includes(eni.id) && eni.subnetId == net.id).length > 0
+        it => it.subnets.includes(net.id) && all.enis.some(eni => it.enis.includes(eni.id) && eni.subnetId == net.id)
       ),
       net.id,
       all
     )
 
-    renderLambdas(
+    renderKafkaNodes(
       newIndent,
-      all.lambdas.filter(it => it.subnetIds.includes(net.id)),
-      net.id,
+      all.kafkaNodes.filter(it => all.enis.some(eni => it.eni == eni.id && eni.subnetId == net.id)),
       all
     )
 
@@ -152,6 +167,8 @@ function renderSubnets(indent: string, subnets: SubnetModel[], all: AllResources
       .without(all.ec2s.flatMap(it => it.enis))
       .without(all.tgwAttachments.flatMap(it => it.enis))
       .without(all.lambdas.flatMap(it => it.enis))
+      .without(all.apiGwVpcLinks.flatMap(it => it.enis))
+      .without(all.kafkaNodes.map(it => it.eni))
 
     if (unknownEnis.length > 0) {
       console.log(newIndent)
@@ -338,7 +355,9 @@ function renderEnis(indent: string, enis: EniModel[], all: AllResources) {
   const firstLine = `${indent} ${'┐'.grey}`
   const newIndent = `${indent} ${'│'.grey}`
   enis.forEach(eni => {
-    console.log(`${firstLine} ${eni.id}${eni.description ? ` (${eni.description.grey})` : ''}`)
+    const description = eni.description ? ` (${eni.description.grey})` : ''
+    const owner = eni.interfaceOwner ? ' owned by ' + eni.interfaceOwner.yellow : ''
+    console.log(`${firstLine} ${eni.id}${description}${owner}`)
 
     eni.ips.forEach(ip => {
       const expr = ip.public ? `${ip.private.cyan} -> ${ip.public.cyan}` : ip.private.cyan
@@ -464,6 +483,29 @@ function renderRdsInstances(indent: string, dbs: RdsModel[], subnetId: string, a
   })
 }
 
+function renderKafkaNodes(indent: string, nodes: KafkaNodeModel[], all: AllResources) {
+  const newIndent = `${indent} ${'│'.cyan}`
+  nodes.forEach(node => {
+    console.log(indent + '╲'.cyan)
+    console.log(`${newIndent} Kafka Node ${node.id}`)
+    console.log(`${newIndent}   Type: ${node.type} - ${node.instanceType.yellow}`)
+
+    renderEnis(
+      newIndent,
+      all.enis.filter(it => node.eni == it.id),
+      all
+    )
+    if (node.cluster) renderKafkaCluster(newIndent, node.cluster)
+  })
+}
+function renderKafkaCluster(indent: string, cluster: KafkaClusterModel) {
+  const newIndent = `${indent} ${'│'.grey}`
+  console.log(indent + '╲'.grey)
+  const state = cluster.state == 'ACTIVE' ? cluster.state.green : cluster.state.red
+  console.log(`${newIndent} Kafka Cluster ${cluster.name}`)
+  console.log(`${newIndent}   State: ${state}`)
+}
+
 function renderEc2s(indent: string, ec2s: Ec2Model[], subnetId: string, all: AllResources) {
   const newIndent = `${indent} ${'│'.green}`
   ec2s.forEach(ec2 => {
@@ -493,6 +535,23 @@ function renderLambdas(indent: string, lambdas: LambdaModel[], subnetId: string,
     renderEnis(
       newIndent,
       all.enis.filter(it => it.subnetId == subnetId && lambda.enis.includes(it.id)),
+      all
+    )
+  })
+}
+
+function renderApiGatewayVpcLinks(indent: string, vpcLinks: ApiGwVpcLinkModel[], subnetId: string, all: AllResources) {
+  const newIndent = `${indent} ${'│'.white}`
+  vpcLinks.forEach(vpcLink => {
+    console.log(indent + '╲'.white)
+    const name = vpcLink.name ? ` (${vpcLink.name.green})` : ''
+    const status = vpcLink.status == 'AVAILABLE' ? vpcLink.status.green : vpcLink.status.red
+    console.log(`${newIndent} API Gateway VpcLink ${vpcLink.id}${name}`)
+    console.log(`${newIndent}   Status: ${status}`)
+
+    renderEnis(
+      newIndent,
+      all.enis.filter(it => it.subnetId == subnetId && vpcLink.enis.includes(it.id)),
       all
     )
   })

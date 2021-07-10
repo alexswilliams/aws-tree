@@ -33,6 +33,7 @@ export async function getAllRdsInstances(enis: EniModel[]): Promise<RdsModel[]> 
           .filter(
             eni =>
               eni.description == 'RDSNetworkInterface' &&
+              eni.interfaceOwner == 'amazon-rds' &&
               subnets.includes(eni.subnetId) &&
               intersectionOf(eni.secGroups, secGroups).length > 0
           )

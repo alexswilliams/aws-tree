@@ -15,6 +15,8 @@ import { getAllVpcEndpoints, VpcEndpointModel } from './vpc-endpoint'
 import { getAllVpcPeerings, VpcPeeringModel } from './vpc-peering'
 import { getAllTgwAttachments, TgwAttachmentModel } from './tgw'
 import { getAllLambdas, LambdaModel } from './lambda'
+import { ApiGwVpcLinkModel, getAllApiGwVpcLinks } from './api-gw'
+import { getAllKafkaNodes, KafkaNodeModel } from './kafka'
 
 export type AllResources = {
   vpcs: VpcModel[]
@@ -34,6 +36,8 @@ export type AllResources = {
   virtualGateways: VgwModel[]
   tgwAttachments: TgwAttachmentModel[]
   lambdas: LambdaModel[]
+  apiGwVpcLinks: ApiGwVpcLinkModel[]
+  kafkaNodes: KafkaNodeModel[]
 }
 export async function getAllResources(mock?: AllResources): Promise<AllResources> {
   if (mock) return mock
@@ -51,17 +55,29 @@ export async function getAllResources(mock?: AllResources): Promise<AllResources
       getAllRouteTables(),
       getAllEcsClusters(),
     ])
-  const [ec2s, vpcEndpoints, ecsTasks, loadBalancers, rds, virtualGateways, tgwAttachments, lambdas] =
-    await Promise.all([
-      getAllEc2Instances(),
-      getAllVpcEndpoints(),
-      getAllEcsTasks(ecsClusters),
-      getAllLoadBalancers(enis),
-      getAllRdsInstances(enis),
-      getAllVirtualGateways(),
-      getAllTgwAttachments(enis),
-      getAllLambdas(enis),
-    ])
+  const [
+    ec2s,
+    vpcEndpoints,
+    ecsTasks,
+    loadBalancers,
+    rds,
+    virtualGateways,
+    tgwAttachments,
+    lambdas,
+    apiGwVpcLinks,
+    kafkaNodes,
+  ] = await Promise.all([
+    getAllEc2Instances(),
+    getAllVpcEndpoints(),
+    getAllEcsTasks(ecsClusters),
+    getAllLoadBalancers(enis),
+    getAllRdsInstances(enis),
+    getAllVirtualGateways(),
+    getAllTgwAttachments(enis),
+    getAllLambdas(enis),
+    getAllApiGwVpcLinks(enis),
+    getAllKafkaNodes(),
+  ])
 
   const allResources = {
     vpcs,
@@ -81,6 +97,8 @@ export async function getAllResources(mock?: AllResources): Promise<AllResources
     virtualGateways,
     tgwAttachments,
     lambdas,
+    apiGwVpcLinks,
+    kafkaNodes,
   }
   return Object.freeze(allResources)
 }

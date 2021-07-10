@@ -13,7 +13,10 @@ export type LambdaModel = {
   enis: string[]
 }
 export async function getAllLambdas(enis: EniModel[]): Promise<LambdaModel[]> {
-  const response = await combineAllPages(paginateListFunctions({ client: lambdaClient }, {}), it => it.Functions)
+  const response = await combineAllPages(
+    paginateListFunctions({ client: lambdaClient }, { MaxItems: 50 }),
+    it => it.Functions
+  )
   return response
     .filter(lambda => lambda.VpcConfig)
     .map(lambda => ({
@@ -25,7 +28,7 @@ export async function getAllLambdas(enis: EniModel[]): Promise<LambdaModel[]> {
       enis: enis
         .filter(
           eni =>
-            eni.description?.includes('ENI-' + lambda.FunctionName ?? 'xxxxx') &&
+            eni.description?.includes('ENI-' + (lambda.FunctionName ?? 'xxxxx') + '-') &&
             (lambda.VpcConfig?.SubnetIds ?? []).includes(eni.subnetId)
         )
         .map(eni => eni.id),
