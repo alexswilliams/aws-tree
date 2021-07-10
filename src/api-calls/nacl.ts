@@ -1,6 +1,6 @@
-import { EC2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ec2Api = new EC2()
+import { EC2Client, paginateDescribeNetworkAcls } from '@aws-sdk/client-ec2'
+import { combineAllPages } from '../helper'
+const client = new EC2Client({})
 
 export type NaclModel = {
   id: string
@@ -22,11 +22,9 @@ export type NaclModel = {
   }[]
 }
 export async function getAllNacls(): Promise<NaclModel[]> {
-  const naclsResponse = await allPagesThrowing(ec2Api.describeNetworkAcls(), (acc, next) => ({
-    NetworkAcls: [...(acc.NetworkAcls ?? []), ...(next.NetworkAcls ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeNetworkAcls({ client }, {}), it => it.NetworkAcls)
   return (
-    naclsResponse.NetworkAcls?.map(nacl => ({
+    response.map(nacl => ({
       id: nacl.NetworkAclId ?? 'unknown-nacl',
       vpcId: nacl.VpcId ?? 'unknown-vpc',
       logicalId: nacl.Tags?.find(it => it.Key == 'aws:cloudformation:logical-id')?.Value,

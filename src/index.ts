@@ -5,8 +5,14 @@ export async function main(): Promise<void> {
   console.log('Fetching information...'.grey)
   console.log('')
 
-  const all = await getAllResources()
-  renderVpcs(all.vpcs, all)
+  try {
+    const all = await getAllResources()
+    renderVpcs(all.vpcs, all)
+  } catch (e: unknown) {
+    console.error('! Encountered an error while contacting AWS:'.red)
+    if (e instanceof Error) console.error(e.message.red.bold)
+    console.error('')
+  }
 }
 
 main()

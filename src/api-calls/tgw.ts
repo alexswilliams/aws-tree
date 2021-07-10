@@ -5,7 +5,7 @@ import {
 } from '@aws-sdk/client-ec2'
 import { combineAllPages } from '../helper'
 import type { EniModel } from './eni'
-const ec2v3 = new EC2Client({})
+const client = new EC2Client({})
 
 export type TgwModel = {
   id: string
@@ -28,11 +28,8 @@ export type TgwAttachmentModel = {
 
 export async function getAllTgwAttachments(enis: EniModel[]): Promise<TgwAttachmentModel[]> {
   const [attachmentsResponse, tgwResponse] = await Promise.all([
-    combineAllPages(
-      paginateDescribeTransitGatewayAttachments({ client: ec2v3 }, {}),
-      it => it.TransitGatewayAttachments
-    ),
-    combineAllPages(paginateDescribeTransitGateways({ client: ec2v3 }, {}), it => it.TransitGateways),
+    combineAllPages(paginateDescribeTransitGatewayAttachments({ client }, {}), it => it.TransitGatewayAttachments),
+    combineAllPages(paginateDescribeTransitGateways({ client }, {}), it => it.TransitGateways),
   ])
 
   const tgws: TgwModel[] =

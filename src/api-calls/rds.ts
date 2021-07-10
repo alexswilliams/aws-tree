@@ -1,7 +1,7 @@
-import { RDS } from 'aws-sdk'
-import { allPagesThrowing, intersectionOf } from '../helper'
+import { paginateDescribeDBInstances, RDSClient } from '@aws-sdk/client-rds'
+import { combineAllPages, intersectionOf } from '../helper'
 import type { EniModel } from './eni'
-const rdsApi = new RDS()
+const client = new RDSClient({})
 
 export type RdsModel = {
   id: string
@@ -13,11 +13,10 @@ export type RdsModel = {
   enis: string[]
 }
 export async function getAllRdsInstances(enis: EniModel[]): Promise<RdsModel[]> {
-  const response = await allPagesThrowing(rdsApi.describeDBInstances(), (acc, next) => ({
-    DBInstances: [...(acc.DBInstances ?? []), ...(next.DBInstances ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeDBInstances({ client }, {}), it => it.DBInstances)
+
   return (
-    response.DBInstances?.map(db => {
+    response.map(db => {
       const subnets = db.DBSubnetGroup?.Subnets?.map(it => it.SubnetIdentifier ?? '?subnet') ?? []
       const secGroups =
         db.VpcSecurityGroups?.filter(it => it.Status == 'active')?.map(it => it.VpcSecurityGroupId ?? '?vpc') ?? []

@@ -1,6 +1,6 @@
 import { EC2Client, paginateDescribeInstances } from '@aws-sdk/client-ec2'
 import { combineAllPages } from '../helper'
-const ec2v3 = new EC2Client({})
+const client = new EC2Client({})
 
 export type Ec2Model = {
   id: string
@@ -13,7 +13,7 @@ export type Ec2Model = {
   enis: string[]
 }
 export async function getAllEc2Instances(): Promise<Ec2Model[]> {
-  const response = await combineAllPages(paginateDescribeInstances({ client: ec2v3 }, {}), x =>
+  const response = await combineAllPages(paginateDescribeInstances({ client: client }, {}), x =>
     x.Reservations?.flatMap(it => it.Instances)
   )
   return response.map(inst => {

@@ -1,5 +1,4 @@
 import type { Paginator } from '@aws-sdk/types'
-import type { AWSError, Request } from 'aws-sdk'
 import 'colors'
 
 export function intersectionOf<T>(a: T[], b: T[]): T[] {
@@ -17,38 +16,6 @@ export async function combineAllPages<T, Q>(
     results.push(...nonBlankField)
   }
   return results
-}
-
-async function allPages<Res>(
-  firstPageRequest: Request<Res, AWSError>,
-  combinator: (acc: Res, next: Res) => Res
-): Promise<Res | AWSError> {
-  const responses = []
-  let request = firstPageRequest
-  let response
-  do {
-    response = await request.promise()
-    if (response.$response.error) return response.$response.error
-    if (!response.$response.data) throw Error('data missing, no error given')
-    responses.push(response.$response.data)
-
-    if (!request.isPageable()) break
-
-    const nextPage = response.$response.nextPage()
-    if (nextPage === undefined) break
-    request = nextPage
-  } while (response.$response.hasNextPage())
-
-  return responses.reduce(combinator)
-}
-
-export async function allPagesThrowing<Res>(
-  firstPageRequest: Request<Res, AWSError>,
-  combinator: (acc: Res, next: Res) => Res
-): Promise<Res> {
-  const result = await allPages(firstPageRequest, combinator)
-  if (result instanceof Error) throw Error
-  return result
 }
 
 declare global {

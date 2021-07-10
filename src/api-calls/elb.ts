@@ -1,7 +1,7 @@
-import { ELBv2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
+import { ElasticLoadBalancingV2Client, paginateDescribeLoadBalancers } from '@aws-sdk/client-elastic-load-balancing-v2'
+import { combineAllPages } from '../helper'
 import type { EniModel } from './eni'
-const elbApi = new ELBv2()
+const client = new ElasticLoadBalancingV2Client({})
 
 export type LoadBalancerModel = {
   arn: string
@@ -12,11 +12,10 @@ export type LoadBalancerModel = {
   subnets: string[]
 }
 export async function getAllLoadBalancers(enis: EniModel[]): Promise<LoadBalancerModel[]> {
-  const response = await allPagesThrowing(elbApi.describeLoadBalancers(), (acc, next) => ({
-    LoadBalancers: [...(acc.LoadBalancers ?? []), ...(next.LoadBalancers ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeLoadBalancers({ client }, {}), it => it.LoadBalancers)
+
   return (
-    response.LoadBalancers?.map(lb => ({
+    response.map(lb => ({
       arn: lb.LoadBalancerArn ?? 'unknown-load-balancer',
       name: lb.LoadBalancerName ?? 'unknown-load-balancer',
       type: lb.Type ?? 'unknown',

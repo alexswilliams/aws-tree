@@ -1,6 +1,6 @@
-import { EC2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ec2Api = new EC2()
+import { EC2Client, paginateDescribeRouteTables } from '@aws-sdk/client-ec2'
+import { combineAllPages } from '../helper'
+const client = new EC2Client({})
 
 export type RouteTableModel = {
   id: string
@@ -16,11 +16,9 @@ export type RouteTableModel = {
   }[]
 }
 export async function getAllRouteTables(): Promise<RouteTableModel[]> {
-  const response = await allPagesThrowing(ec2Api.describeRouteTables(), (acc, next) => ({
-    RouteTables: [...(acc.RouteTables ?? []), ...(next.RouteTables ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeRouteTables({ client }, {}), it => it.RouteTables)
   return (
-    response.RouteTables?.map(table => ({
+    response.map(table => ({
       id: table.RouteTableId ?? 'unknown-route-table',
       name: table.Tags?.find(it => it.Key == 'Name')?.Value,
       isMain: table.Associations?.some(it => it.Main == true) ?? false,

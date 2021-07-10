@@ -1,6 +1,6 @@
-import { EC2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ec2Api = new EC2()
+import { EC2Client, paginateDescribeVpcPeeringConnections } from '@aws-sdk/client-ec2'
+import { combineAllPages } from '../helper'
+const client = new EC2Client({})
 
 export type VpcPeeringModel = {
   id: string
@@ -19,11 +19,12 @@ export type VpcPeeringModel = {
   }
 }
 export async function getAllVpcPeerings(): Promise<VpcPeeringModel[]> {
-  const vpcPeeringResponse = await allPagesThrowing(ec2Api.describeVpcPeeringConnections(), (acc, next) => ({
-    VpcPeeringConnections: [...(acc.VpcPeeringConnections ?? []), ...(next.VpcPeeringConnections ?? [])],
-  }))
+  const response = await combineAllPages(
+    paginateDescribeVpcPeeringConnections({ client }, {}),
+    it => it.VpcPeeringConnections
+  )
   return (
-    vpcPeeringResponse.VpcPeeringConnections?.map(pcx => ({
+    response.map(pcx => ({
       id: pcx.VpcPeeringConnectionId ?? 'unknown-vpc-peering',
       name: pcx.Tags?.find(it => it.Key == 'Name')?.Value,
       logicalId: pcx.Tags?.find(it => it.Key == 'aws:cloudformation:logical-id')?.Value,

@@ -4,7 +4,7 @@ import {
   DescribeVpnGatewaysCommand,
   EC2Client,
 } from '@aws-sdk/client-ec2'
-const ec2v3 = new EC2Client({})
+const client = new EC2Client({})
 
 export type CustomerGatewayModel = {
   id: string
@@ -40,9 +40,9 @@ export type VgwModel = {
 }
 export async function getAllVirtualGateways(): Promise<VgwModel[]> {
   const [vpnGateways, vpnConnections, customerGateways] = await Promise.all([
-    ec2v3.send(new DescribeVpnGatewaysCommand({})),
-    ec2v3.send(new DescribeVpnConnectionsCommand({})),
-    ec2v3.send(new DescribeCustomerGatewaysCommand({})),
+    client.send(new DescribeVpnGatewaysCommand({})),
+    client.send(new DescribeVpnConnectionsCommand({})),
+    client.send(new DescribeCustomerGatewaysCommand({})),
   ])
 
   const custGateways: CustomerGatewayModel[] =

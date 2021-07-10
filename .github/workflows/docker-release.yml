@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Build Docker image
-        run: docker build . --tag ${IMAGE_URI}:${GITHUB_SHA}
+        run: docker build . --tag ${IMAGE_URI}:${GITHUB_SHA} --progress plain
 
       - name: Log in to dockerhub
         run: docker login --username ${{ secrets.DOCKER_HUB_USERNAME }} --password ${{ secrets.DOCKER_HUB_TOKEN }}

@@ -1,6 +1,6 @@
-import { EC2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ec2Api = new EC2()
+import { EC2Client, paginateDescribeInternetGateways } from '@aws-sdk/client-ec2'
+import { combineAllPages } from '../helper'
+const client = new EC2Client({})
 
 export type InternetGatewayModel = {
   id: string
@@ -8,11 +8,9 @@ export type InternetGatewayModel = {
   vpcIds: string[]
 }
 export async function getAllInternetGateways(): Promise<InternetGatewayModel[]> {
-  const response = await allPagesThrowing(ec2Api.describeInternetGateways(), (acc, next) => ({
-    InternetGateways: [...(acc.InternetGateways ?? []), ...(next.InternetGateways ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeInternetGateways({ client }, {}), it => it.InternetGateways)
   return (
-    response.InternetGateways?.map(igw => ({
+    response.map(igw => ({
       id: igw.InternetGatewayId ?? 'unknown-igw',
       name: igw.Tags?.find(it => it.Key == 'Name')?.Value,
       vpcIds: igw.Attachments?.filter(it => it.State == 'available')?.map(it => it.VpcId ?? '?vpc') ?? [],

@@ -1,6 +1,6 @@
-import { EC2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ec2Api = new EC2()
+import { EC2Client, paginateDescribeVpcs } from '@aws-sdk/client-ec2'
+import { combineAllPages } from '../helper'
+const client = new EC2Client({})
 
 export type VpcModel = {
   id: string
@@ -9,11 +9,9 @@ export type VpcModel = {
   accountId: string
 }
 export async function getAllVpcs(): Promise<VpcModel[]> {
-  const vpcResponse = await allPagesThrowing(ec2Api.describeVpcs(), (acc, next) => ({
-    Vpcs: [...(acc.Vpcs ?? []), ...(next.Vpcs ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeVpcs({ client }, {}), it => it.Vpcs)
   return (
-    vpcResponse.Vpcs?.map(vpc => ({
+    response.map(vpc => ({
       id: vpc.VpcId ?? 'unknown-vpc',
       name: vpc.Tags?.find(it => it.Key == 'Name')?.Value,
       v4Cidrs: vpc.CidrBlockAssociationSet?.map(it => it.CidrBlock ?? '?cidrv4') ?? [vpc.CidrBlock ?? 'cidrv4'],

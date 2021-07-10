@@ -2,7 +2,7 @@ import { LambdaClient, paginateListFunctions } from '@aws-sdk/client-lambda'
 import { combineAllPages } from '../helper'
 import type { EniModel } from './eni'
 
-const lambdaClient = new LambdaClient({})
+const client = new LambdaClient({})
 
 export type LambdaModel = {
   id: string
@@ -13,10 +13,7 @@ export type LambdaModel = {
   enis: string[]
 }
 export async function getAllLambdas(enis: EniModel[]): Promise<LambdaModel[]> {
-  const response = await combineAllPages(
-    paginateListFunctions({ client: lambdaClient }, { MaxItems: 50 }),
-    it => it.Functions
-  )
+  const response = await combineAllPages(paginateListFunctions({ client }, { MaxItems: 50 }), it => it.Functions)
   return response
     .filter(lambda => lambda.VpcConfig)
     .map(lambda => ({

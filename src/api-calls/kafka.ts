@@ -1,5 +1,4 @@
 import { KafkaClient, paginateListClusters, paginateListNodes } from '@aws-sdk/client-kafka'
-import { inspect } from 'util'
 import { combineAllPages } from '../helper'
 
 const client = new KafkaClient({})
@@ -32,7 +31,6 @@ export async function getAllKafkaNodes(): Promise<KafkaNodeModel[]> {
     )
   )
   const allNodes = nodesPerCluster.flat(1)
-  console.log(inspect(allNodes, false, null, true))
 
   return allNodes.map(node => ({
     id: node.nodeInfo.NodeARN ?? 'unknown-kafka-node',

@@ -1,6 +1,6 @@
-import { EC2 } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ec2Api = new EC2()
+import { EC2Client, paginateDescribeSecurityGroups } from '@aws-sdk/client-ec2'
+import { combineAllPages } from '../helper'
+const client = new EC2Client({})
 
 export type SecGroupModel = {
   id: string
@@ -17,11 +17,9 @@ export type SecGroupModel = {
   }[]
 }
 export async function getAllSecurityGroups(): Promise<SecGroupModel[]> {
-  const sgResponse = await allPagesThrowing(ec2Api.describeSecurityGroups(), (acc, next) => ({
-    SecurityGroups: [...(acc.SecurityGroups ?? []), ...(next.SecurityGroups ?? [])],
-  }))
+  const response = await combineAllPages(paginateDescribeSecurityGroups({ client }, {}), it => it.SecurityGroups)
   return (
-    sgResponse.SecurityGroups?.map(sg => ({
+    response.map(sg => ({
       id: sg.GroupId ?? 'unknown-sec-group',
       vpcId: sg.VpcId ?? 'unknown-vpc',
       name: sg.GroupName,

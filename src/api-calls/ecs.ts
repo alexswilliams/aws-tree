@@ -1,6 +1,6 @@
-import { ECS } from 'aws-sdk'
-import { allPagesThrowing } from '../helper'
-const ecsApi = new ECS()
+import { DescribeTasksCommand, ECSClient, paginateListClusters, paginateListTasks, Task } from '@aws-sdk/client-ecs'
+import { combineAllPages } from '../helper'
+const client = new ECSClient({})
 
 export type EcsTaskModel = {
   arn: string
@@ -17,37 +17,27 @@ export type EcsTaskModel = {
 }
 
 export async function getAllEcsClusters(): Promise<string[]> {
-  return (
-    (
-      await allPagesThrowing(ecsApi.listClusters(), (acc, next) => ({
-        clusterArns: [...(acc.clusterArns ?? []), ...(next.clusterArns ?? [])],
-      }))
-    ).clusterArns ?? []
-  )
+  return combineAllPages(paginateListClusters({ client }, {}), it => it.clusterArns)
 }
 export async function getAllEcsTasks(clusterArns: string[]): Promise<EcsTaskModel[]> {
-  const taskDescriptionsPerCluster = await Promise.all(
-    clusterArns.map(async clusterArn => {
-      const taskArnResponse = await allPagesThrowing(ecsApi.listTasks({ cluster: clusterArn }), (acc, next) => ({
-        taskArns: [...(acc.taskArns ?? []), ...(next.taskArns ?? [])],
-      }))
-
-      if ((taskArnResponse.taskArns ?? []).length == 0) return []
-
-      const response = await allPagesThrowing(
-        ecsApi.describeTasks({
-          tasks: taskArnResponse.taskArns ?? [],
-          cluster: clusterArn,
-        }),
-        (acc, next) => ({
-          tasks: [...(acc.tasks ?? []), ...(next.tasks ?? [])],
-        })
+  const allTaskArnsPerCluster = await Promise.all(
+    clusterArns.map(clusterArn =>
+      combineAllPages(paginateListTasks({ client }, { cluster: clusterArn }), it =>
+        it.taskArns?.map(taskArn => ({ clusterArn, taskArn }))
       )
-
-      return response.tasks ?? []
-    })
+    )
   )
-  const allTasks = taskDescriptionsPerCluster.flat(1)
+
+  const allTasksPerCluster = await Promise.all(
+    allTaskArnsPerCluster
+      .filter(it => it.length > 0)
+      .map(async clusterBatch => {
+        const cluster = clusterBatch[0].clusterArn
+
+        return client.send(new DescribeTasksCommand({ tasks: clusterBatch.map(it => it.taskArn), cluster }))
+      })
+  )
+  const allTasks = allTasksPerCluster.flatMap(it => it.tasks).filter(it => it) as Task[]
 
   return allTasks.map(task => ({
     arn: task.taskArn ?? 'unknown-task',
