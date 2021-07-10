@@ -1,10 +1,9 @@
 name: Docker Image CI
 
 on:
-  push:
-    branches:
-      - master
-  workflow_dispatch:
+  release:
+    types:
+      - created
 
 env:
   IMAGE_URI: alexswilliams/aws-tree
@@ -26,3 +25,9 @@ jobs:
 
       - name: Push to dockerhub
         run: docker push ${IMAGE_URI}:${GITHUB_SHA}
+
+      - name: Tag as latest
+        run: docker tag ${IMAGE_URI}:${GITHUB_SHA} ${IMAGE_URI}:latest
+
+      - name: Update latest tag
+        run: docker push ${IMAGE_URI}:latest
