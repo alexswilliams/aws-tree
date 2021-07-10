@@ -23,6 +23,8 @@
   },
   "homepage": "https://github.com/alexswilliams/aws-tree#readme",
   "dependencies": {
+    "@aws-sdk/client-ec2": "3.21.0",
+    "@aws-sdk/client-lambda": "3.21.0",
     "aws-sdk": "2.942.0",
     "colors": "1.4.0"
   },

@@ -1,14 +1,25 @@
 import 'colors'
-import type * as api from './api-calls'
+import type { AllResources } from './api-calls'
+import type { Ec2Model } from './api-calls/ec2'
+import type { EcsTaskModel } from './api-calls/ecs'
+import type { LoadBalancerModel } from './api-calls/elb'
+import type { EniModel } from './api-calls/eni'
+import type { InternetGatewayModel } from './api-calls/igw'
+import type { NaclModel } from './api-calls/nacl'
+import type { NatGatewayModel } from './api-calls/nat-gw'
+import type { RdsModel } from './api-calls/rds'
+import type { RouteTableModel } from './api-calls/route-table'
+import type { SecGroupModel } from './api-calls/sec-group'
+import type { SubnetModel } from './api-calls/subnet'
+import type { CustomerGatewayModel, VgwModel, VpnConnectionModel } from './api-calls/vpns'
+import type { VpcModel } from './api-calls/vpc'
+import type { VpcEndpointModel } from './api-calls/vpc-endpoint'
+import type { VpcPeeringModel } from './api-calls/vpc-peering'
+import { makeName } from './helper'
+import type { TgwAttachmentModel, TgwModel } from './api-calls/tgw'
+import type { LambdaModel } from './api-calls/lambda'
 
-function makeNamePair(a: string | undefined, b: string | undefined): string | undefined {
-  if (a && b) return a.green + ' / ' + b.grey
-  else if (a) return a.green
-  else if (b) return b.green
-  return undefined
-}
-
-export function renderVpcs(vpcs: api.VpcModel[], all: api.AllResources): void {
+export function renderVpcs(vpcs: VpcModel[], all: AllResources): void {
   const indent = '│'.grey
   all.vpcs.forEach(vpc => {
     console.log('')
@@ -23,6 +34,10 @@ export function renderVpcs(vpcs: api.VpcModel[], all: api.AllResources): void {
     renderInternetGateways(
       indent,
       all.intGws.filter(it => it.vpcIds.includes(vpc.id))
+    )
+    renderVirtualGateways(
+      indent,
+      all.virtualGateways.filter(it => it.vpcIds.includes(vpc.id))
     )
     renderVpcPeering(
       indent,
@@ -47,20 +62,204 @@ export function renderVpcs(vpcs: api.VpcModel[], all: api.AllResources): void {
   })
 }
 
-function renderRouteTables(indent: string, tables: api.RouteTableModel[]) {
+function renderSubnets(indent: string, subnets: SubnetModel[], all: AllResources) {
+  const newIndent = `${indent} ${'│'.grey}`
+  subnets.forEach(net => {
+    console.log(indent)
+    console.log(indent + '╲'.grey)
+    console.log(`${newIndent} ${net.id}${net.name ? ` (${net.name.green})` : ''}`)
+    console.log(`${newIndent}   AZ: ${net.az.grey}`)
+    console.log(`${newIndent}   CIDR: ${net.v4Cidr.cyan} (${net.availableIps} available IPs)`)
+
+    renderRouteTables(
+      newIndent,
+      all.routeTables.filter(it => it.subnetAssociations.includes(net.id))
+    )
+
+    renderNacls(
+      newIndent,
+      all.nacls.filter(it => it.associatedSubnets.includes(net.id))
+    )
+
+    renderNatGateways(
+      newIndent,
+      all.natGws.filter(it => it.subnetId == net.id),
+      all
+    )
+
+    renderTransitGatewayAttachments(
+      newIndent,
+      all.tgwAttachments.filter(it => it.subnets.includes(net.id)),
+      net.id,
+      all
+    )
+
+    const enisInThisSubnet = all.enis.filter(it => it.subnetId == net.id).map(it => it.id)
+    renderVpcEndpoints(
+      newIndent,
+      all.vpcEndpoints.filter(
+        it => it.vpcId == net.vpcId && it.enis.length > 0 && it.enis.some(eni => enisInThisSubnet.includes(eni))
+      ),
+      net.id,
+      all
+    )
+
+    renderLoadBalancers(
+      newIndent,
+      all.loadBalancers.filter(it => it.vpcId == net.vpcId && it.subnets.includes(net.id)),
+      net.id,
+      all
+    )
+
+    renderEc2s(
+      newIndent,
+      all.ec2s.filter(it => it.vpcId == net.vpcId && it.subnets.includes(net.id)),
+      net.id,
+      all
+    )
+
+    renderEcsTaskAttachments(
+      newIndent,
+      all.ecsTasks.filter(it => it.subnetIds.includes(net.id)),
+      net.id,
+      all
+    )
+
+    renderRdsInstances(
+      newIndent,
+      all.rds.filter(
+        it =>
+          it.subnets.includes(net.id) &&
+          all.enis.filter(eni => it.enis.includes(eni.id) && eni.subnetId == net.id).length > 0
+      ),
+      net.id,
+      all
+    )
+
+    renderLambdas(
+      newIndent,
+      all.lambdas.filter(it => it.subnetIds.includes(net.id)),
+      net.id,
+      all
+    )
+
+    const unknownEnis = enisInThisSubnet
+      .without(all.natGws.flatMap(it => it.enis))
+      .without(all.vpcEndpoints.flatMap(it => it.enis))
+      .without(all.loadBalancers.flatMap(it => it.enis))
+      .without(all.ecsTasks.flatMap(it => it.enis))
+      .without(all.rds.flatMap(it => it.enis))
+      .without(all.ec2s.flatMap(it => it.enis))
+      .without(all.tgwAttachments.flatMap(it => it.enis))
+      .without(all.lambdas.flatMap(it => it.enis))
+
+    if (unknownEnis.length > 0) {
+      console.log(newIndent)
+      console.log(newIndent + ` ! ${unknownEnis.length} ENIs are unaccounted for in the above list:`.red.bold)
+      renderEnis(
+        newIndent,
+        all.enis.filter(it => unknownEnis.includes(it.id)),
+        all
+      )
+    }
+  })
+}
+
+function renderVirtualGateways(indent: string, vgws: VgwModel[]) {
+  const newIndent = `${indent} ${'│'.grey}`
+  vgws.forEach(vgw => {
+    console.log(indent + '╲'.grey)
+    const name = makeName(vgw.name, vgw.logicalId)
+    const state = vgw.state == 'available' ? vgw.state.green : vgw.state.red
+    console.log(`${newIndent} ${vgw.id}${name ? ` (${name})` : ''} - ${state}`)
+    console.log(`${newIndent}   Type: ${vgw.type}`)
+    if (vgw.asn) console.log(`${newIndent}   ASN: ${vgw.asn.toString().cyan}`)
+    renderVpnConnections(newIndent, vgw.vpnConnections)
+  })
+}
+function renderVpnConnections(indent: string, vpns: VpnConnectionModel[]) {
+  const newIndent = `${indent} ${'│'.grey}`
+  vpns.forEach(vpn => {
+    console.log(indent + '╲'.grey)
+    const state = vpn.state == 'available' ? vpn.state.green : vpn.state.red
+    const name = vpn.name ? ` (${vpn.name.green})` : ''
+    console.log(`${newIndent} ${vpn.id}${name} - ${state}`)
+    console.log(`${newIndent}   Type: ${vpn.type}`)
+
+    if (vpn.tunnels.length > 0) {
+      console.log(`${newIndent}   Tunnels:`)
+      vpn.tunnels.forEach(tun => {
+        const status = tun.status == 'UP' ? tun.status.green : tun.status.red
+        console.log(`${newIndent}     • ${tun.outsideIp.cyan} - ${status}`)
+      })
+    }
+
+    if (vpn.customerGateway) renderCustomerGateways(newIndent, [vpn.customerGateway])
+  })
+}
+function renderCustomerGateways(indent: string, cgws: CustomerGatewayModel[]) {
+  const newIndent = `${indent} ${'│'.grey}`
+  cgws.forEach(cgw => {
+    console.log(indent + '╲'.grey)
+    const state = cgw.state == 'available' ? cgw.state.green : cgw.state.red
+    const name = cgw.name ? ` (${cgw.name.green})` : ''
+    console.log(`${newIndent} ${cgw.id}${name} - ${state}`)
+    console.log(`${newIndent}   Type: ${cgw.type}`)
+    console.log(`${newIndent}   IP: ${cgw.ip.cyan}`)
+    if (cgw.asn) console.log(`${newIndent}   ASN: ${cgw.asn.cyan}`)
+  })
+}
+
+function renderTransitGatewayAttachments(
+  indent: string,
+  atts: TgwAttachmentModel[],
+  subnetId: string,
+  all: AllResources
+) {
+  const newIndent = `${indent} ${'│'.grey}`
+  atts.forEach(att => {
+    console.log(indent + '╲'.grey)
+    const name = makeName(att.name, att.logicalId)
+    const nameView = name ? ` (${name})` : ''
+    const state = att.state == 'available' ? att.state.green : att.state.red
+    console.log(`${newIndent} ${att.id}${nameView} - ${state}`)
+
+    renderEnis(
+      newIndent,
+      all.enis.filter(eni => eni.subnetId == subnetId && att.enis.includes(eni.id)),
+      all
+    )
+    if (att.tgw) renderTransitGateways(newIndent, [att.tgw])
+  })
+}
+function renderTransitGateways(indent: string, tgws: TgwModel[]) {
+  const newIndent = `${indent} ${'│'.grey}`
+  tgws.forEach(tgw => {
+    console.log(indent + '╲'.grey)
+    const name = makeName(tgw.name, tgw.description)
+    const nameView = name ? ` (${name})` : ''
+    const state = tgw.state == 'available' ? tgw.state.green : tgw.state.red
+    console.log(`${newIndent} ${tgw.id}${nameView} - ${state}`)
+    console.log(`${newIndent}   Owner: ${tgw.owner.yellow}`)
+    if (tgw.asn) console.log(`${newIndent}   ASN: ${tgw.asn.toString().cyan}`)
+  })
+}
+
+function renderRouteTables(indent: string, tables: RouteTableModel[]) {
   const newIndent = `${indent} ${'│'.grey}`
   tables.forEach(table => {
     console.log(indent + '╲'.grey)
     const main = table.isMain ? ` [${'VPC Default'.yellow}]` : ''
     console.log(`${newIndent} ${table.id}${main}${table.name ? ` (${table.name.green})` : ''}`)
     table.routes.forEach(route => {
+      const propagated = route.propagated ? ' [' + 'propagated'.yellow + ']' : ''
       const state = route.state == 'active' ? route.state.green : route.state.red
-      console.log(`${newIndent}  • ${route.destination.cyan} via ${route.via.grey} - ${state}`)
+      console.log(`${newIndent}  • ${route.destination.cyan}${propagated} via ${route.via.grey} - ${state}`)
     })
   })
 }
 
-function renderInternetGateways(indent: string, igws: api.InternetGatewayModel[]) {
+function renderInternetGateways(indent: string, igws: InternetGatewayModel[]) {
   const newIndent = `${indent} ${'│'.grey}`
   igws.forEach(igw => {
     console.log(indent + '╲'.grey)
@@ -68,13 +267,13 @@ function renderInternetGateways(indent: string, igws: api.InternetGatewayModel[]
   })
 }
 
-function renderVpcPeering(indent: string, peeringConnections: api.VpcPeeringModel[], thisVpcId: string) {
+function renderVpcPeering(indent: string, peeringConnections: VpcPeeringModel[], thisVpcId: string) {
   const newIndent = `${indent} ${'│'.grey}`
   peeringConnections.forEach(pcx => {
     console.log(indent + '╲'.grey)
 
     const status = pcx.status == 'active' ? pcx.status.green : pcx.status.red
-    const name = makeNamePair(pcx.name, pcx.logicalId)
+    const name = makeName(pcx.name, pcx.logicalId)
     console.log(`${newIndent} ${pcx.id}${name ? ` (${name})` : ''} - ${status}`)
 
     const requestorVpc =
@@ -93,7 +292,7 @@ function renderVpcPeering(indent: string, peeringConnections: api.VpcPeeringMode
   })
 }
 
-function renderNacls(indent: string, nacls: api.NaclModel[]) {
+function renderNacls(indent: string, nacls: NaclModel[]) {
   const newIndent = `${indent} ${'│'.grey}`
   nacls.forEach(nacl => {
     console.log(indent + '╲'.grey)
@@ -121,106 +320,21 @@ function renderNacls(indent: string, nacls: api.NaclModel[]) {
   })
 }
 
-function renderSubnets(indent: string, subnets: api.SubnetModel[], all: api.AllResources) {
-  const newIndent = `${indent} ${'│'.yellow}`
-  subnets.forEach(net => {
-    console.log(indent)
-    console.log(indent + '╲'.yellow)
-    console.log(`${newIndent} ${net.id}${net.name ? ` (${net.name.green})` : ''}`)
-    console.log(`${newIndent}   AZ: ${net.az.grey}`)
-    console.log(`${newIndent}   CIDR: ${net.v4Cidr.cyan} (${net.availableIps} available IPs)`)
-
-    renderRouteTables(
-      newIndent,
-      all.routeTables.filter(it => it.subnetAssociations.includes(net.id))
-    )
-
-    renderNacls(
-      newIndent,
-      all.nacls.filter(it => it.associatedSubnets.includes(net.id))
-    )
-
-    renderNatGateways(
-      newIndent,
-      all.natGws.filter(it => it.subnetId == net.id),
-      all
-    )
-
-    const enisInThisSubnet = all.enis.filter(it => (it.subnetId = net.id)).map(it => it.id)
-    renderVpcEndpoints(
-      newIndent,
-      all.vpcEndpoints.filter(
-        it => it.vpcId == net.vpcId && it.enis.length > 0 && it.enis.some(eni => enisInThisSubnet.includes(eni))
-      ),
-      net.id,
-      all
-    )
-
-    renderLoadBalancers(
-      newIndent,
-      all.loadBalancers.filter(it => it.vpcId == net.vpcId && it.subnets.includes(net.id)),
-      net.id,
-      all
-    )
-
-    renderEcsTaskAttachments(
-      newIndent,
-      all.ecsTasks.filter(it => it.subnetIds.includes(net.id)),
-      all
-    )
-
-    renderRdsInstances(
-      newIndent,
-      all.rds.filter(it => it.subnets.includes(net.id)),
-      net.id,
-      all
-    )
-
-    const unknownEnis = enisInThisSubnet
-      .without(all.natGws.flatMap(it => it.enis.map(e => e.eni)))
-      .without(all.vpcEndpoints.flatMap(it => it.enis))
-      .without(all.loadBalancers.flatMap(it => it.enis))
-      .without(all.ecsTasks.flatMap(it => it.enis))
-      .without(all.rds.flatMap(it => it.enis))
-
-    if (unknownEnis.length > 0) {
-      console.log(newIndent)
-      console.log(newIndent + `${unknownEnis.length} ENIs are unaccounted for in the above list:`.red.bold)
-      renderEnis(
-        newIndent,
-        all.enis.filter(it => unknownEnis.includes(it.id)),
-        all
-      )
-    }
-  })
-}
-
-declare global {
-  interface Array<T> {
-    without(other: T[]): T[]
-  }
-}
-Array.prototype.without = function <T>(this: T[], other: T[]): T[] {
-  return [...this].filter(it => !other.includes(it))
-}
-
-function renderNatGateways(indent: string, gws: api.NatGatewayModel[], all: api.AllResources) {
+function renderNatGateways(indent: string, gws: NatGatewayModel[], all: AllResources) {
   const newIndent = `${indent} ${'│'.grey}`
   gws.forEach(gw => {
     console.log(indent + '╲'.grey)
 
     console.log(`${newIndent} ${gw.id}${gw.name ? ` (${gw.name.green})` : ''}`)
-    gw.enis.forEach(eni => {
-      renderEnis(
-        newIndent,
-        all.enis.filter(it => it.id == eni.eni),
-        all
-      )
-    })
+    renderEnis(
+      newIndent,
+      all.enis.filter(it => gw.enis.includes(it.id) && it.subnetId == gw.subnetId),
+      all
+    )
   })
 }
 
-function renderEnis(indent: string, enis: api.EniModel[], all: api.AllResources) {
+function renderEnis(indent: string, enis: EniModel[], all: AllResources) {
   const firstLine = `${indent} ${'┐'.grey}`
   const newIndent = `${indent} ${'│'.grey}`
   enis.forEach(eni => {
@@ -239,22 +353,25 @@ function renderEnis(indent: string, enis: api.EniModel[], all: api.AllResources)
   })
 }
 
-function ingressLineFromRule(rule: { port: string; from: string[] }): string {
-  return `${'ALLOW'.green} from [${rule.from.join(', ').cyan}] to ${rule.port.cyan}`
-}
-function egressLineFromRule(rule: { port: string; to: string[] }): string {
-  if (rule.to.length == 1 && rule.to.includes('255.255.255.255/32') && rule.port == '252-86') {
-    return `${'DENY'.red} to [${'any address'.red}] to ${'any ports'.red}`
-  } else {
-    return `${'ALLOW'.green} to [${rule.to.join(', ').cyan}] to ${rule.port.cyan}`
+function renderSecGroups(indent: string, groups: SecGroupModel[]) {
+  function ingressLineFromRule(rule: { port: string; from: string[] }): string {
+    const src = rule.from.length == 1 && rule.from[0] == '0.0.0.0/0' ? 'any address' : rule.from.join(', ')
+    const port = rule.port == '-1' ? 'any port' : rule.port
+    return `${'ALLOW'.green} from [${src.cyan}] to ${port.cyan}`
   }
-}
-
-function renderSecGroups(indent: string, groups: api.SecGroupModel[]) {
+  function egressLineFromRule(rule: { port: string; to: string[] }): string {
+    if (rule.to.length == 1 && rule.to.includes('255.255.255.255/32') && rule.port == '252-86') {
+      return `${'DENY'.red} to [${'any address'.red}] to ${'any ports'.red}`
+    } else {
+      const port = rule.port == '-1' ? 'any port' : rule.port
+      const dest = rule.to.length == 1 && rule.to[0] == '0.0.0.0/0' ? 'any address' : rule.to.join(', ')
+      return `${'ALLOW'.green} to [${dest.cyan}] to ${port.cyan}`
+    }
+  }
   const firstLine = `${indent} ${'┐'.grey}`
   const newIndent = `${indent} ${'│'.grey}`
   groups.forEach(group => {
-    const name = makeNamePair(group.name, group.description)
+    const name = makeName(group.name, group.description)
     console.log(`${firstLine} ${group.id}${name ? `(${name})` : ''}`)
 
     if (group.ingress.length == 1) {
@@ -276,9 +393,9 @@ function renderSecGroups(indent: string, groups: api.SecGroupModel[]) {
 
 function renderVpcEndpoints(
   indent: string,
-  endpoints: api.VpcEndpointModel[],
+  endpoints: VpcEndpointModel[],
   subnetId: string | undefined,
-  all: api.AllResources
+  all: AllResources
 ) {
   const newIndent = `${indent} ${'│'.grey}`
   endpoints.forEach(endpoint => {
@@ -288,17 +405,15 @@ function renderVpcEndpoints(
     console.log(`${newIndent} ${endpoint.id} (${endpoint.type}: ${endpoint.service.green}) - ${state}`)
     if (endpoint.type == 'Interface') console.log(`${newIndent}   Private DNS enabled: ${endpoint.privateDns}`)
 
-    endpoint.enis.forEach(eni => {
-      renderEnis(
-        newIndent,
-        all.enis.filter(it => it.id == eni && it.subnetId == subnetId),
-        all
-      )
-    })
+    renderEnis(
+      newIndent,
+      all.enis.filter(it => endpoint.enis.includes(it.id) && it.subnetId == subnetId),
+      all
+    )
   })
 }
 
-function renderEcsTaskAttachments(indent: string, tasks: api.EcsTaskModel[], all: api.AllResources) {
+function renderEcsTaskAttachments(indent: string, tasks: EcsTaskModel[], subnetId: string, all: AllResources) {
   const newIndent = `${indent} ${'│'.magenta}`
   tasks.forEach(task => {
     console.log(indent + '╲'.magenta)
@@ -312,18 +427,16 @@ function renderEcsTaskAttachments(indent: string, tasks: api.EcsTaskModel[], all
       console.log(`${deepIndent} ${cont.arn} ${cont.name ? ` (${cont.name.green})` : ''}`)
       console.log(`${deepIndent}   Status: ${cont.status == 'RUNNING' ? cont.status.green : cont.status.red}`)
       console.log(`${deepIndent}   Health: ${cont.health == 'HEALTHY' ? cont.health.green : cont.health.red}`)
-      cont.enis.forEach(eni => {
-        renderEnis(
-          deepIndent,
-          all.enis.filter(it => it.id == eni),
-          all
-        )
-      })
+      renderEnis(
+        deepIndent,
+        all.enis.filter(it => cont.enis.includes(it.id) && it.subnetId == subnetId),
+        all
+      )
     })
   })
 }
 
-function renderLoadBalancers(indent: string, lbs: api.LoadBalancerModel[], subnetId: string, all: api.AllResources) {
+function renderLoadBalancers(indent: string, lbs: LoadBalancerModel[], subnetId: string, all: AllResources) {
   const newIndent = `${indent} ${'│'.red}`
   lbs.forEach(lb => {
     console.log(indent + '╲'.red)
@@ -337,15 +450,49 @@ function renderLoadBalancers(indent: string, lbs: api.LoadBalancerModel[], subne
   })
 }
 
-function renderRdsInstances(indent: string, dbs: api.RdsModel[], subnetId: string, all: api.AllResources) {
+function renderRdsInstances(indent: string, dbs: RdsModel[], subnetId: string, all: AllResources) {
   const newIndent = `${indent} ${'│'.blue}`
   dbs.forEach(db => {
     console.log(indent + '╲'.blue)
-    const name = makeNamePair(db.arn, db.logicalId)
+    const name = makeName(db.arn, db.logicalId)
     console.log(`${newIndent} RDS ${db.id}${name ? ` (${name})` : ''}`)
     renderEnis(
       newIndent,
       all.enis.filter(it => it.subnetId == subnetId && db.enis.includes(it.id)),
+      all
+    )
+  })
+}
+
+function renderEc2s(indent: string, ec2s: Ec2Model[], subnetId: string, all: AllResources) {
+  const newIndent = `${indent} ${'│'.green}`
+  ec2s.forEach(ec2 => {
+    console.log(indent + '╲'.green)
+    const name = makeName(ec2.name, ec2.logicalId)
+    const state = ec2.state == 'running' ? ec2.state.green : ec2.state.red
+
+    console.log(`${newIndent} EC2 ${ec2.id}${name ? ` (${name})` : ''}`)
+    console.log(`${newIndent}   Type: ${ec2.type.yellow}`)
+    console.log(`${newIndent}   State: ${state}`)
+    renderEnis(
+      newIndent,
+      all.enis.filter(it => it.subnetId == subnetId && ec2.enis.includes(it.id)),
+      all
+    )
+  })
+}
+
+function renderLambdas(indent: string, lambdas: LambdaModel[], subnetId: string, all: AllResources) {
+  const newIndent = `${indent} ${'│'.yellow}`
+  lambdas.forEach(lambda => {
+    console.log(indent + '╲'.yellow)
+    console.log(`${newIndent} Lambda ${lambda.id}`)
+    if (lambda.runtime) console.log(`${newIndent}   Runtime: ${lambda.runtime}`)
+    if (lambda.memorySize) console.log(`${newIndent}   Memory: ${lambda.memorySize.toString().cyan} MiB`)
+
+    renderEnis(
+      newIndent,
+      all.enis.filter(it => it.subnetId == subnetId && lambda.enis.includes(it.id)),
       all
     )
   })
