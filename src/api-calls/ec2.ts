@@ -13,8 +13,8 @@ export type Ec2Model = {
   enis: string[]
 }
 export async function getAllEc2Instances(): Promise<Ec2Model[]> {
-  const response = await combineAllPages(paginateDescribeInstances({ client: client }, {}), x =>
-    x.Reservations?.flatMap(it => it.Instances)
+  const response = await combineAllPages(paginateDescribeInstances({ client }, {}), page =>
+    page.Reservations?.flatMap(it => it.Instances)
   )
   return response.map(inst => {
     return {
